@@ -44,13 +44,19 @@
 <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
     <h1 class="text-2xl font-bold text-center mb-6 text-gray-800">나만의 도장 만들기</h1>
     
+    <!-- 탭 UI 추가 -->
+    <div class="flex border-b border-gray-200 mb-6">
+        <button id="tab-general" class="flex-1 py-2 text-center border-b-2 border-red-500 font-bold text-red-600 transition-colors">일반 (3글자)</button>
+        <button id="tab-yakin" class="flex-1 py-2 text-center border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 transition-colors">약인 (1글자)</button>
+    </div>
+
     <div class="space-y-6">
         <!-- 이름 입력 -->
         <div>
-            <label for="nameInput" class="block text-sm font-medium text-gray-700 mb-1">이름 (3글자)</label>
+            <label for="nameInput" id="nameLabel" class="block text-sm font-medium text-gray-700 mb-1">이름 (3글자)</label>
             <input type="text" id="nameInput" maxlength="3" placeholder="홍길동" value="홍길동"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-colors text-center text-lg">
-            <p class="text-xs text-gray-500 mt-1 text-center">3글자를 입력하면 우측 하단에 '인(印)'이 추가됩니다.</p>
+            <p id="nameDesc" class="text-xs text-gray-500 mt-1 text-center">3글자를 입력하면 우측 하단에 '인(印)'이 추가됩니다.</p>
         </div>
 
         <!-- 글꼴 선택 -->
@@ -100,6 +106,13 @@
         const fontRadios = document.querySelectorAll('input[name="fontStyle"]');
         const downloadBtn = document.getElementById('downloadBtn');
 
+        // 탭 관련 요소 가져오기
+        const tabGeneral = document.getElementById('tab-general');
+        const tabYakin = document.getElementById('tab-yakin');
+        const nameLabel = document.getElementById('nameLabel');
+        const nameDesc = document.getElementById('nameDesc');
+        let currentTab = 'general';
+
         // 설정값
         const stampColor = '#cc0000'; // 도장 색상 고정 (진한 빨강)
         // 캔버스 크기 (다운로드 해상도). 화면에는 CSS로 작게 보임
@@ -116,16 +129,50 @@
         let lastMouseX = 0;
         let lastMouseY = 0;
 
+        // 탭 전환 이벤트 리스너 추가
+        tabGeneral.addEventListener('click', () => {
+            currentTab = 'general';
+            tabGeneral.className = 'flex-1 py-2 text-center border-b-2 border-red-500 font-bold text-red-600 transition-colors';
+            tabYakin.className = 'flex-1 py-2 text-center border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 transition-colors';
+            
+            nameLabel.innerText = '이름 (3글자)';
+            nameInput.maxLength = 3;
+            nameInput.placeholder = '홍길동';
+            if(nameInput.value.length === 1) nameInput.value = nameInput.value + '길동'; // 1글자에서 전환 시 기본값 채워줌
+            nameDesc.innerText = "3글자를 입력하면 우측 하단에 '인(印)'이 추가됩니다.";
+            
+            globalOffsetX = 0; globalOffsetY = 0;
+            drawStamp();
+        });
+
+        tabYakin.addEventListener('click', () => {
+            currentTab = 'yakin';
+            tabYakin.className = 'flex-1 py-2 text-center border-b-2 border-red-500 font-bold text-red-600 transition-colors';
+            tabGeneral.className = 'flex-1 py-2 text-center border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 transition-colors';
+            
+            nameLabel.innerText = '성 (1글자)';
+            nameInput.maxLength = 1;
+            nameInput.placeholder = '홍';
+            nameInput.value = nameInput.value.charAt(0) || '홍'; // 첫 글자만 남김
+            nameDesc.innerText = "1글자만 입력되어 원을 꽉 채우는 도장이 만들어집니다.";
+            
+            globalOffsetX = 0; globalOffsetY = 0;
+            drawStamp();
+        });
+
         // 도장 그리기 함수
         function drawStamp() {
             let name = nameInput.value.trim();
-            if (name.length > 3) {
+            if (currentTab === 'general' && name.length > 3) {
                 name = name.substring(0, 3); // 3글자로 제한
+                nameInput.value = name;
+            } else if (currentTab === 'yakin' && name.length > 1) {
+                name = name.substring(0, 1); // 1글자로 제한
                 nameInput.value = name;
             }
 
             // 글자 추출 및 기본값 설정
-            let char1 = name.charAt(0) || '홍'; // 좌상
+            let char1 = name.charAt(0) || '홍'; // 좌상 (또는 약인의 유일한 글자)
             let char2 = name.charAt(1) || '길'; // 우상
             let char3 = name.charAt(2) || '동'; // 좌하
             let char4 = '인';                     // 우하
@@ -161,44 +208,59 @@
             ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI, false); // 테두리의 중간을 기준으로 클리핑하여 글자가 테두리에 먹혀들어가게 함
             ctx.clip();
 
-            // 2. 텍스트 설정 및 배치 계산 (글꼴별 분리 적용)
-            let fontSize, adjustY, pos;
+            if (currentTab === 'general') {
+                // 2-A. 일반(3글자) 텍스트 설정 및 배치 계산
+                let fontSize, adjustY, pos;
 
-            if (fontStyle === 'go') {
-                // 고인체 느낌 (현재 셋팅 유지 - 만족하신 설정)
-                fontSize = 210; 
-                adjustY = 12; 
-                pos = [
-                    { x: -108, y: -105 }, // 좌상 (1번 글자 - 성)
-                    { x: 100,  y: -100 }, // 우상 (2번 글자 - 이름 첫 자)
-                    { x: -108, y: 105 },  // 좌하 (3번 글자 - 이름 둘째 자)
-                    { x: 105,  y: 105 }   // 우하 (4번 글자 - '인')
-                ];
+                if (fontStyle === 'go') {
+                    // 고인체 느낌
+                    fontSize = 210; 
+                    adjustY = 12; 
+                    pos = [
+                        { x: -108, y: -105 }, // 좌상 (1번 글자)
+                        { x: 100,  y: -100 }, // 우상 (2번 글자)
+                        { x: -108, y: 105 },  // 좌하 (3번 글자)
+                        { x: 105,  y: 105 }   // 우하 (4번 글자)
+                    ];
+                } else {
+                    // 전서체 느낌 (약간 작게, 덜 겹치게, 전체적으로 아래로 5px)
+                    fontSize = 195;
+                    adjustY = 15;
+                    pos = [
+                        { x: -98, y: -95 }, // 좌상
+                        { x: 92,  y: -92 }, // 우상
+                        { x: -98, y: 95 },  // 좌하
+                        { x: 98,  y: 95 }   // 우하
+                    ];
+                }
+
+                ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+                ctx.fillStyle = stampColor;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // 좌상 (1번 글자)
+                ctx.fillText(char1, centerX + pos[0].x + globalOffsetX, centerY + pos[0].y + adjustY + globalOffsetY);
+                // 우상 (2번 글자)
+                ctx.fillText(char2, centerX + pos[1].x + globalOffsetX, centerY + pos[1].y + adjustY + globalOffsetY);
+                // 좌하 (3번 글자)
+                ctx.fillText(char3, centerX + pos[2].x + globalOffsetX, centerY + pos[2].y + adjustY + globalOffsetY);
+                // 우하 (4번 글자)
+                ctx.fillText(char4, centerX + pos[3].x + globalOffsetX, centerY + pos[3].y + adjustY + globalOffsetY);
             } else {
-                // 전서체 느낌 (고딕체 특성상 덜 겹치도록 폰트 크기 및 여백 미세 조정)
-                fontSize = 195; // 폰트 크기를 약간 줄임
-                adjustY = 15; // 전체적으로 아래로 5px 이동 (기존 10 -> 15)
-                pos = [
-                    { x: -98, y: -95 }, // 좌상: 바깥으로 당기는 폭을 줄임
-                    { x: 92,  y: -92 }, // 우상: 기준점도 살짝 안으로 당김
-                    { x: -98, y: 95 },  // 좌하
-                    { x: 98,  y: 95 }   // 우하
-                ];
+                // 2-B. 약인(1글자) 텍스트 설정 및 배치 계산
+                // 폰트가 원을 꽉 채우도록 아주 크게 설정합니다.
+                let fontSize = fontStyle === 'go' ? 380 : 340;
+                let adjustY = fontStyle === 'go' ? 20 : 25;
+
+                ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+                ctx.fillStyle = stampColor;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // 정중앙에 1글자 그리기
+                ctx.fillText(char1, centerX + globalOffsetX, centerY + adjustY + globalOffsetY);
             }
-
-            ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
-            ctx.fillStyle = stampColor;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-
-            // 좌상 (1번 글자)
-            ctx.fillText(char1, centerX + pos[0].x + globalOffsetX, centerY + pos[0].y + adjustY + globalOffsetY);
-            // 우상 (2번 글자)
-            ctx.fillText(char2, centerX + pos[1].x + globalOffsetX, centerY + pos[1].y + adjustY + globalOffsetY);
-            // 좌하 (3번 글자)
-            ctx.fillText(char3, centerX + pos[2].x + globalOffsetX, centerY + pos[2].y + adjustY + globalOffsetY);
-            // 우하 (4번 글자)
-            ctx.fillText(char4, centerX + pos[3].x + globalOffsetX, centerY + pos[3].y + adjustY + globalOffsetY);
 
             // 클리핑 영역 해제
             ctx.restore(); 
