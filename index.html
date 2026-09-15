@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>온라인 도장 생성기</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 웹 폰트를 사용하여 조금 더 도장 느낌을 낼 수 있도록 폰트를 가져옵니다 (옵션) */
+        @import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Serif+KR:wght@700;900&display=swap');
+        
+        body {
+            font-family: 'Gowun Dodum', sans-serif;
+            background-color: #f3f4f6; /* Tailwind gray-100 */
+        }
+        
+        /* 캔버스 래퍼 - 캔버스를 정사각형으로 유지하고 둥글게 보이기 위해 */
+        #canvas-wrapper {
+            width: 250px;
+            height: 250px;
+            margin: 0 auto;
+            position: relative;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 캔버스 자체는 정사각형이지만 래퍼에 의해 둥글게 보입니다 */
+        canvas {
+            border-radius: 50%; /* 시각적으로 둥글게 보이도록 */
+            touch-action: none; /* 모바일에서 드래그 시 화면 스크롤 방지 */
+            cursor: grab;
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+<div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+    <h1 class="text-2xl font-bold text-center mb-6 text-gray-800">나만의 도장 만들기</h1>
+    
+    <div class="space-y-6">
+        <!-- 이름 입력 -->
+        <div>
+            <label for="nameInput" class="block text-sm font-medium text-gray-700 mb-1">이름 (3글자)</label>
+            <input type="text" id="nameInput" maxlength="3" placeholder="홍길동" value="홍길동"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-colors text-center text-lg">
+            <p class="text-xs text-gray-500 mt-1 text-center">3글자를 입력하면 우측 하단에 '인(印)'이 추가됩니다.</p>
+        </div>
+
+        <!-- 글꼴 선택 -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">글꼴 스타일</label>
+            <div class="flex gap-4">
+                <label class="flex-1 cursor-pointer">
+                    <input type="radio" name="fontStyle" value="go" checked class="peer sr-only">
+                    <div class="p-3 text-center border rounded-lg peer-checked:bg-red-50 peer-checked:border-red-500 peer-checked:text-red-700 hover:bg-gray-50 transition-colors">
+                        고인체 느낌<br><span class="text-xs">(궁서체)</span>
+                    </div>
+                </label>
+                <label class="flex-1 cursor-pointer">
+                    <input type="radio" name="fontStyle" value="jeon" class="peer sr-only">
+                    <div class="p-3 text-center border rounded-lg peer-checked:bg-red-50 peer-checked:border-red-500 peer-checked:text-red-700 hover:bg-gray-50 transition-colors">
+                        전서체 느낌<br><span class="text-xs">(굵은 고딕)</span>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <!-- 미리보기 영역 -->
+        <div class="mt-8">
+            <p class="text-sm font-medium text-gray-700 text-center mb-1">미리보기</p>
+            <p class="text-xs text-red-500 text-center mb-4 font-bold animate-pulse">※ 도장 안쪽을 마우스나 터치로 드래그하여 글자 위치를 미세 조정할 수 있습니다.</p>
+            <div id="canvas-wrapper">
+                <!-- 다운로드 시 투명 배경을 지원하기 위해 캔버스 자체 배경은 투명하게 합니다 -->
+                <canvas id="stampCanvas" width="500" height="500" class="w-full h-full object-contain"></canvas>
+            </div>
+        </div>
+
+        <!-- 다운로드 버튼 -->
+        <button id="downloadBtn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-colors flex items-center justify-center gap-2 mt-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+            이미지 다운로드
+        </button>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const canvas = document.getElementById('stampCanvas');
+        const ctx = canvas.getContext('2d');
+        const nameInput = document.getElementById('nameInput');
+        const fontRadios = document.querySelectorAll('input[name="fontStyle"]');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        // 설정값
+        const stampColor = '#cc0000'; // 도장 색상 고정 (진한 빨강)
+        // 캔버스 크기 (다운로드 해상도). 화면에는 CSS로 작게 보임
+        const canvasSize = 500; 
+        const centerX = canvasSize / 2;
+        const centerY = canvasSize / 2;
+        const lineWidth = 14; // 테두리 두께 지정
+        const radius = (canvasSize / 2) - (lineWidth / 2); // 테두리 두께를 고려한 반지름
+
+        // 텍스트 이동을 위한 전역 변수
+        let globalOffsetX = 0;
+        let globalOffsetY = 0;
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        // 도장 그리기 함수
+        function drawStamp() {
+            let name = nameInput.value.trim();
+            if (name.length > 3) {
+                name = name.substring(0, 3); // 3글자로 제한
+                nameInput.value = name;
+            }
+
+            // 글자 추출 및 기본값 설정
+            let char1 = name.charAt(0) || '홍'; // 좌상
+            let char2 = name.charAt(1) || '길'; // 우상
+            let char3 = name.charAt(2) || '동'; // 좌하
+            let char4 = '인';                     // 우하
+
+            // 선택된 폰트 스타일
+            const fontStyle = document.querySelector('input[name="fontStyle"]:checked').value;
+            
+            // 폰트 설정
+            let fontFamily = '';
+            let fontWeight = '';
+            
+            if (fontStyle === 'go') {
+                fontFamily = "'Gungsuh', 'Batang', serif"; // 궁서체/명조체 계열
+                fontWeight = '900';
+            } else {
+                fontFamily = "'Malgun Gothic', 'Dotum', sans-serif"; // 고딕체 계열
+                fontWeight = '900'; // 최대한 굵게
+            }
+
+            // 캔버스 초기화 (투명 배경)
+            ctx.clearRect(0, 0, canvasSize, canvasSize);
+
+            // 1. 빨간색 꽉 찬 테두리 원 그리기
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI, false);
+            ctx.lineWidth = lineWidth; // 테두리 두께
+            ctx.strokeStyle = stampColor;
+            ctx.stroke();
+
+            // 클리핑 영역 설정: 텍스트가 원 테두리와 자연스럽게 맞닿아 잘리도록 설정
+            ctx.save(); // 현재 상태 저장
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI, false); // 테두리의 중간을 기준으로 클리핑하여 글자가 테두리에 먹혀들어가게 함
+            ctx.clip();
+
+            // 2. 텍스트 설정 및 배치 계산 (글꼴별 분리 적용)
+            let fontSize, adjustY, pos;
+
+            if (fontStyle === 'go') {
+                // 고인체 느낌 (현재 셋팅 유지 - 만족하신 설정)
+                fontSize = 210; 
+                adjustY = 12; 
+                pos = [
+                    { x: -108, y: -105 }, // 좌상 (1번 글자 - 성)
+                    { x: 100,  y: -100 }, // 우상 (2번 글자 - 이름 첫 자)
+                    { x: -108, y: 105 },  // 좌하 (3번 글자 - 이름 둘째 자)
+                    { x: 105,  y: 105 }   // 우하 (4번 글자 - '인')
+                ];
+            } else {
+                // 전서체 느낌 (고딕체 특성상 덜 겹치도록 폰트 크기 및 여백 미세 조정)
+                fontSize = 195; // 폰트 크기를 약간 줄임
+                adjustY = 15; // 전체적으로 아래로 5px 이동 (기존 10 -> 15)
+                pos = [
+                    { x: -98, y: -95 }, // 좌상: 바깥으로 당기는 폭을 줄임
+                    { x: 92,  y: -92 }, // 우상: 기준점도 살짝 안으로 당김
+                    { x: -98, y: 95 },  // 좌하
+                    { x: 98,  y: 95 }   // 우하
+                ];
+            }
+
+            ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+            ctx.fillStyle = stampColor;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // 좌상 (1번 글자)
+            ctx.fillText(char1, centerX + pos[0].x + globalOffsetX, centerY + pos[0].y + adjustY + globalOffsetY);
+            // 우상 (2번 글자)
+            ctx.fillText(char2, centerX + pos[1].x + globalOffsetX, centerY + pos[1].y + adjustY + globalOffsetY);
+            // 좌하 (3번 글자)
+            ctx.fillText(char3, centerX + pos[2].x + globalOffsetX, centerY + pos[2].y + adjustY + globalOffsetY);
+            // 우하 (4번 글자)
+            ctx.fillText(char4, centerX + pos[3].x + globalOffsetX, centerY + pos[3].y + adjustY + globalOffsetY);
+
+            // 클리핑 영역 해제
+            ctx.restore(); 
+        }
+
+        // 이벤트 리스너: 입력이나 옵션 변경 시 다시 그리기
+        nameInput.addEventListener('input', drawStamp);
+        
+        fontRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                // 폰트 스타일이 바뀌면 위치 조정값 초기화
+                globalOffsetX = 0;
+                globalOffsetY = 0;
+                drawStamp();
+            });
+        });
+
+        // --- 캔버스 드래그 이벤트 (터치 및 마우스 지원) ---
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            // 화면상 크기와 실제 캔버스 해상도 비율 계산
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            let clientX = evt.clientX;
+            let clientY = evt.clientY;
+            
+            // 터치 이벤트인 경우 좌표 추출
+            if (evt.touches && evt.touches.length > 0) {
+                clientX = evt.touches[0].clientX;
+                clientY = evt.touches[0].clientY;
+            }
+
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        function handleStart(e) {
+            if(e.cancelable) e.preventDefault(); // 스크롤 방지
+            isDragging = true;
+            const pos = getMousePos(e);
+            lastMouseX = pos.x;
+            lastMouseY = pos.y;
+        }
+
+        function handleMove(e) {
+            if (!isDragging) return;
+            if(e.cancelable) e.preventDefault(); // 스크롤 방지
+            const pos = getMousePos(e);
+            const dx = pos.x - lastMouseX;
+            const dy = pos.y - lastMouseY;
+            
+            globalOffsetX += dx;
+            globalOffsetY += dy;
+            
+            lastMouseX = pos.x;
+            lastMouseY = pos.y;
+            
+            drawStamp(); // 좌표 업데이트 후 다시 그리기
+        }
+
+        function handleEnd(e) {
+            isDragging = false;
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('touchstart', handleStart, {passive: false});
+
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('touchmove', handleMove, {passive: false});
+
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchend', handleEnd);
+        canvas.addEventListener('mouseleave', handleEnd);
+
+        // 다운로드 버튼 이벤트
+        downloadBtn.addEventListener('click', () => {
+            // 빈 이름 체크
+            if(nameInput.value.trim() === '') {
+                // 커스텀 메시지 박스 대신 간단한 alert 대체 로직 (제한 사항 준수)
+                const originalText = downloadBtn.innerHTML;
+                downloadBtn.innerHTML = '이름을 입력해주세요!';
+                downloadBtn.classList.replace('bg-red-600', 'bg-yellow-500');
+                setTimeout(() => {
+                    downloadBtn.innerHTML = originalText;
+                    downloadBtn.classList.replace('bg-yellow-500', 'bg-red-600');
+                }, 2000);
+                nameInput.focus();
+                return;
+            }
+
+            // 캔버스를 Data URL (PNG)로 변환
+            const dataURL = canvas.toDataURL('image/png');
+            
+            // 다운로드 트리거
+            const link = document.createElement('a');
+            const name = nameInput.value.trim() || '도장';
+            link.download = `${name}_도장.png`;
+            link.href = dataURL;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        // 초기 화면에 폰트가 완전히 로드된 후 그리기 위해 약간 지연
+        // Noto Serif 폰트 로드 대기
+        document.fonts.ready.then(function() {
+            drawStamp();
+        });
+        
+        // 백업으로 바로 한 번 그리기
+        drawStamp();
+    });
+</script>
+</body>
+</html>
